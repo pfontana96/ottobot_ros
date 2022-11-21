@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import rospy
-from std_msgs.msg import String #String message 
 from std_msgs.msg import Int8
 
 import sys
@@ -100,9 +99,9 @@ class TeleopNode:
     \ta   d
     \tz x c
     """
-    def __init__(self, rate: float):
+    def __init__(self, rate: float, topic_name: str):
         rospy.init_node('teleop_driver', anonymous=True, log_level=rospy.DEBUG)
-        self._pub = rospy.Publisher('ottobot/key_teleop', Int8, queue_size=10) # "key" is the publisher name
+        self._pub = rospy.Publisher(topic_name, Int8, queue_size=10) # "key" is the publisher name
         self._rate = rospy.Rate(rate)
 
         key_timeout = 1 / (5 * rate)  # x10 faster than publisher Node
@@ -160,12 +159,18 @@ class TeleopNode:
 
         return msg
 
+
 if __name__=='__main__':
 
-    rate = rospy.get_param("~rate", 20.0)
+    rate = rospy.get_param("rate", 10.0)
     namespace = rospy.get_namespace()
-    rospy.loginfo("namespace: {}".format(namespace))
-    teleop_driver = TeleopNode(rate=rate)
+    topic_name = rospy.get_param("out_topic", "key_teleop")
+
+    if namespace != "":
+        topic_name = namespace + topic_name
+
+    teleop_driver = TeleopNode(rate=rate, topic_name=topic_name)
+
     try:
         teleop_driver.run()
     except rospy.ROSInterruptException:

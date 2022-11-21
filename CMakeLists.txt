@@ -150,6 +150,12 @@ include_directories(
 #   ${catkin_LIBRARIES}
 # )
 
+# catkin_python_setup()
+
+# catkin_install_python(PROGRAMS scripts/motor_driver_node.py scripts/key_teleop_node.py
+#   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+# )
+
 #############
 ## Install ##
 #############
