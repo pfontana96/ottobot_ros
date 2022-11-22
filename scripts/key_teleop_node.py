@@ -160,7 +160,7 @@ class TeleopNode:
         return msg
 
 
-if __name__=='__main__':
+if __name__ == '__main__':
 
     rate = rospy.get_param("rate", 10.0)
     namespace = rospy.get_namespace()
