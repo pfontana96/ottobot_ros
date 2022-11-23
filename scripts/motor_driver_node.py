@@ -18,11 +18,16 @@ class DriverNode(object):
         "IN4": 37,
     }
 
-    def __init__(self, in_topic: str, duty_cycle_step: int, verbose: bool = False):
+    def __init__(self, verbose: bool = False):
 
         rospy.init_node(
             'motor_driver_node', anonymous=True, log_level=(rospy.DEBUG if verbose else rospy.INFO)
         )
+
+        nodename = rospy.get_name()
+
+        in_topic = rospy.get_param("{}/in_topic".format(nodename), "key_teleop")
+        duty_cycle_step = rospy.get_param("{}/duty_cycle_step".format(nodename), 20)
 
         rospy.logdebug("Subscribing to '{}'..".format(in_topic))
         self._sub = rospy.Subscriber(in_topic, Int8, self.callback)
@@ -144,13 +149,7 @@ class DriverNode(object):
 
 if __name__ == '__main__':
 
-    namespace = rospy.get_namespace()
-    topic_name = rospy.get_param("in_topic", "key_teleop")
-    duty_step = rospy.get_param("duty_cycle_step", 20)
-    verbose = rospy.get_param("verbose", True)
+    verbose = True
+    driver_node = DriverNode(verbose=verbose)
 
-    if namespace != "":
-        topic_name = namespace + topic_name
-
-    driver_node = DriverNode(in_topic=topic_name, verbose=verbose)
     driver_node.run()

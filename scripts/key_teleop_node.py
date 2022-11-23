@@ -99,10 +99,17 @@ class TeleopNode:
     \ta   d
     \tz x c
     """
-    def __init__(self, rate: float, topic_name: str, verbose: bool = False):
+    def __init__(self, verbose: bool = False):
+
         rospy.init_node(
             'teleop_driver', anonymous=True, log_level=(rospy.DEBUG if verbose else rospy.INFO)
         )
+
+        nodename = rospy.get_name()
+
+        rate = rospy.get_param("{}/rate".format(nodename), 10.0)
+        topic_name = rospy.get_param("{}/out_topic".format(nodename), "key_teleop")
+
         self._pub = rospy.Publisher(topic_name, Int8, queue_size=10) # "key" is the publisher name
         self._rate = rospy.Rate(rate)
 
@@ -164,17 +171,8 @@ class TeleopNode:
 
 if __name__ == '__main__':
 
-    NODE_NAMESPACE = "key_teleop"
-    namespace = rospy.get_namespace()
-
-    rate = rospy.get_param("{}/{}/rate".format(namespace, NODE_NAMESPACE), 10.0)
-    topic_name = rospy.get_param("{}/{}/out_topic".format(namespace, NODE_NAMESPACE), "key_teleop")
-    verbose = rospy.get_param("{}/{}/verbose".format(namespace, NODE_NAMESPACE), False)
-
-    if namespace != "":
-        topic_name = namespace + topic_name
-
-    teleop_driver = TeleopNode(rate=rate, topic_name=topic_name, verbose=verbose)
+    verbose = True
+    teleop_driver = TeleopNode(verbose=verbose)
 
     try:
         teleop_driver.run()
