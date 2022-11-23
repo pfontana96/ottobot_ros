@@ -164,10 +164,12 @@ class TeleopNode:
 
 if __name__ == '__main__':
 
-    rate = rospy.get_param("rate", 10.0)
+    NODE_NAMESPACE = "key_teleop"
     namespace = rospy.get_namespace()
-    topic_name = rospy.get_param("out_topic", "key_teleop")
-    verbose = rospy.get_param("verbose", True)
+
+    rate = rospy.get_param("{}/{}/rate".format(namespace, NODE_NAMESPACE), 10.0)
+    topic_name = rospy.get_param("{}/{}/out_topic".format(namespace, NODE_NAMESPACE), "key_teleop")
+    verbose = rospy.get_param("{}/{}/verbose".format(namespace, NODE_NAMESPACE), False)
 
     if namespace != "":
         topic_name = namespace + topic_name

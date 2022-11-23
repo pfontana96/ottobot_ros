@@ -1,0 +1,7 @@
+common: &COMMON_PROPERTIES
+  command_topic_name: &command_topic_name key_teleop
+
+key_teleop_node:
+  <<: *COMMON_PROPERTIES
+  rate: 8
+  out_topic: *command_topic_name
