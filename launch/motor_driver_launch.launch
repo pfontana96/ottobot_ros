@@ -1,6 +1,7 @@
 <launch>
     <node pkg="ottobot_ros" type="motor_driver_node.py" name="motor_driver" ns="ottobot" output="screen">
-        <param name="duty_cycle_step" type="int" value="20"/>
-        <param name="in_topic" value="key_teleoperation"/>
+        <!-- <param name="duty_cycle_step" type="int" value="20"/>
+        <param name="in_topic" value="key_teleoperation"/> -->
+        <rosparam file="$(find ottobot_ros)/config/config.yaml"/>
     </node>
 </launch>

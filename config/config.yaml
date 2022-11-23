@@ -3,5 +3,10 @@ common: &COMMON_PROPERTIES
 
 key_teleop_node:
   <<: *COMMON_PROPERTIES
-  rate: 8
   out_topic: *command_topic_name
+  rate: 8
+
+motor_driver_node:
+  <<: *COMMON_PROPERTIES
+  in_topic: *command_topic_name
+  duty_cycle_step: 20

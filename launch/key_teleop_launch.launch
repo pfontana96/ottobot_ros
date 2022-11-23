@@ -1,7 +1,5 @@
 <launch>
     <node pkg="ottobot_ros" type="key_teleop_node.py" name="key_teleop" ns="ottobot" output="screen">
-        <!-- <param name="rate" type="int" value="8"/>
-        <param name="out_topic" value="key_teleoperation"/> -->
         <rosparam file="$(find ottobot_ros)/config/config.yaml"/>
     </node>
 </launch>
