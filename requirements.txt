@@ -1,2 +1,5 @@
 pyyaml~=6.0.0
 Jetson.GPIO~=2.0.20
+numpy~=1.13.3
+cv2~=4.6.0
+pyrealsense2~=2.51.1

@@ -1,0 +1,5 @@
+<launch>
+    <node pkg="ottobot_ros" type="realsense_node.py" name="realsense" ns="ottobot" output="screen">
+        <rosparam file="$(find ottobot_ros)/config/realsense_config.yaml"/>
+    </node>
+</launch>

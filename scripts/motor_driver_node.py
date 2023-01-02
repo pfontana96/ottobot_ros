@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 import rospy
 from std_msgs.msg import String, Int8
 
@@ -29,9 +29,6 @@ class DriverNode(object):
         in_topic = rospy.get_param("{}/in_topic".format(nodename), "key_teleop")
         duty_cycle_step = rospy.get_param("{}/duty_cycle_step".format(nodename), 20)
 
-        rospy.logdebug("Subscribing to '{}'..".format(in_topic))
-        self._sub = rospy.Subscriber(in_topic, Int8, self.callback)
-
         # Pin setup
         # IN1 HIGH & IN2 LOW -> RIGHT FWD
         # IN1 LOW & IN2 HIGH -> RIGHT BWD
@@ -45,9 +42,9 @@ class DriverNode(object):
         GPIO.setmode(GPIO.BOARD)
         
         GPIO.setup(self._PIN_MAP["IN1"], GPIO.OUT, initial=GPIO.LOW)
-        GPIO.setup(self._PIN_MAP["IN2"], GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(self._PIN_MAP["IN2"], GPIO.OUT, initial=GPIO.HIGH)
         GPIO.setup(self._PIN_MAP["IN3"], GPIO.OUT, initial=GPIO.LOW)
-        GPIO.setup(self._PIN_MAP["IN4"], GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(self._PIN_MAP["IN4"], GPIO.OUT, initial=GPIO.HIGH)
 
         GPIO.setup(self._PIN_MAP["ENA"], GPIO.OUT)
         GPIO.setup(self._PIN_MAP["ENB"], GPIO.OUT)
@@ -60,8 +57,11 @@ class DriverNode(object):
         self._duty_cycle_r = 0
         self._duty_cycle_l = 0
 
-        self._motor_l_pwm.start(self._duty_cycle_l)
-        self._motor_r_pwm.start(self._duty_cycle_r)
+        self._motor_l_pwm.start(45)
+        self._motor_r_pwm.start(45)
+
+        rospy.logdebug("Subscribing to '{}'..".format(in_topic))
+        self._sub = rospy.Subscriber(in_topic, Int8, self.callback)
 
     def run(self):
         try:
@@ -71,6 +71,7 @@ class DriverNode(object):
             rospy.loginfo("Interrupt requested")
 
         finally:
+            rospy.loginfo("Resetting pins")
             self._motor_l_pwm.stop()
             self._motor_r_pwm.stop()
             GPIO.cleanup()
