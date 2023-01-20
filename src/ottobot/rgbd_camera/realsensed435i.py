@@ -17,8 +17,7 @@ class RealSenseD435i(BaseRGBDCamera):
 
     # TODO: Fix doc to get correct pyrealsense types on type hints
     def __init__(
-        self, context: rs.context, fps: int, height: int, width: int, device_id: int = None, enable_imu: bool = False,
-        align_to: str = "depth"
+        self, context: rs.context, fps: int, height: int, width: int, device_id: int = None, align_to: str = "depth"
     ):
 
         assertion_msg = "Got invalid 'align_to' option '{}', valid values are '{}'".format(
@@ -31,7 +30,6 @@ class RealSenseD435i(BaseRGBDCamera):
         self._fps = fps
         self._height = height
         self._width = width
-        self._enable_imu = enable_imu
         self._device_id = device_id
         self._align_to = align_to
 
