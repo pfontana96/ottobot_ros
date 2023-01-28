@@ -1,21 +1,22 @@
-#!/usr/bin/python3
+#! /usr/bin/python3
 import rospy
-from std_msgs.msg import String, Int8
+from std_msgs.msg import Int8
 
-from Jetson import GPIO
+from board import SDA, SCL, D20, D26, D16, D19
+from busio import I2C
+import digitalio as dio
+from adafruit_pca9685 import PCA9685
 
 
 class DriverNode(object):
     """Controls Ottobot DC motors. Remember that when using the Jetson Nano, PWM pins should be set by hardware.
     Further info at: https://www.youtube.com/watch?v=eImDQ0PVu2Y
     """
-    _PIN_MAP = {
-        "ENA": 33,
-        "IN1": 36,
-        "IN2": 31,
-        "ENB": 32,
-        "IN3": 35,
-        "IN4": 37,
+    _MOTOR_PINS = {
+        "IN1": dio.DigitalInOut(D20),
+        "IN2": dio.DigitalInOut(D26),
+        "IN3": dio.DigitalInOut(D19),
+        "IN4": dio.DigitalInOut(D16),
     }
 
     def __init__(self, verbose: bool = False):
@@ -27,7 +28,7 @@ class DriverNode(object):
         nodename = rospy.get_name()
 
         in_topic = rospy.get_param("{}/in_topic".format(nodename), "key_teleop")
-        duty_cycle_step = rospy.get_param("{}/duty_cycle_step".format(nodename), 20)
+        duty_cycle_step = rospy.get_param("{}/duty_cycle_step".format(nodename), 0.30)
 
         # Pin setup
         # IN1 HIGH & IN2 LOW -> RIGHT FWD
@@ -35,33 +36,39 @@ class DriverNode(object):
         # IN3 LOW & IN4 HIGH -> LEFT FWD
         # IN3 HIGH & IN4 LOW -> LEFT BWD
 
-        rospy.logdebug("Board: '{}'".format(GPIO.model))
+        rospy.logdebug("Initialising I2C bus and PCA9685 driver..")
 
-        rospy.logdebug("Initialising PINs..")
-        
-        GPIO.setmode(GPIO.BOARD)
-        
-        GPIO.setup(self._PIN_MAP["IN1"], GPIO.OUT, initial=GPIO.LOW)
-        GPIO.setup(self._PIN_MAP["IN2"], GPIO.OUT, initial=GPIO.HIGH)
-        GPIO.setup(self._PIN_MAP["IN3"], GPIO.OUT, initial=GPIO.LOW)
-        GPIO.setup(self._PIN_MAP["IN4"], GPIO.OUT, initial=GPIO.HIGH)
+        i2c_bus = I2C(SCL, SDA)
 
-        GPIO.setup(self._PIN_MAP["ENA"], GPIO.OUT)
-        GPIO.setup(self._PIN_MAP["ENB"], GPIO.OUT)
+        self._pca = PCA9685(i2c_bus)
+        self._pca.frequency = 60
 
-        self._motor_r_pwm = GPIO.PWM(self._PIN_MAP["ENA"], 100)
-        self._motor_l_pwm = GPIO.PWM(self._PIN_MAP["ENB"], 100)
-
-        rospy.logdebug("Starting PWMs..")
         self._duty_step = duty_cycle_step
         self._duty_cycle_r = 0
         self._duty_cycle_l = 0
 
-        self._motor_l_pwm.start(45)
-        self._motor_r_pwm.start(45)
+        self._pca.channels[0].duty_cycle = self._duty_cycle_r
+        self._pca.channels[1].duty_cycle = self._duty_cycle_l
 
+        rospy.logdebug("DONE")
+
+        rospy.logdebug("Initialising PINs..")
+        self._init_motor_pins()
+        rospy.logdebug("DONE")
+        
         rospy.logdebug("Subscribing to '{}'..".format(in_topic))
         self._sub = rospy.Subscriber(in_topic, Int8, self.callback)
+
+    def _init_motor_pins(self):
+        for pin in self._MOTOR_PINS.values():
+            pin.direction = dio.Direction.OUTPUT
+            pin.value = False
+
+    def _shutdown(self):
+        for pin in self._MOTOR_PINS.values():
+            pin.deinit()
+
+        self._pca.deinit()
 
     def run(self):
         try:
@@ -72,56 +79,56 @@ class DriverNode(object):
 
         finally:
             rospy.loginfo("Resetting pins")
-            self._motor_l_pwm.stop()
-            self._motor_r_pwm.stop()
-            GPIO.cleanup()
+            self._shutdown()
 
     def callback(self, data):
-        duty_cycle_r, duty_cycle_l = self._decode_msg(data.data, self._duty_step)
+        duty_cycle_r, duty_cycle_l, right_fwd, left_fwd = self._decode_msg(data.data, self._duty_step)
         rospy.loginfo("Right : {} || Left: {}".format(duty_cycle_r, duty_cycle_l))
 
         if duty_cycle_r != self._duty_cycle_r:
             if duty_cycle_r == 0:
                 # Right motor not moving
-                GPIO.output(self._PIN_MAP["IN1"], GPIO.LOW)
-                GPIO.output(self._PIN_MAP["IN2"], GPIO.LOW)
+                self._MOTOR_PINS["IN1"].value = False
+                self._MOTOR_PINS["IN2"].value = False
 
-            elif duty_cycle_r < 0:
-                # Right motor moving backwards
-                GPIO.output(self._PIN_MAP["IN1"], GPIO.LOW)
-                GPIO.output(self._PIN_MAP["IN2"], GPIO.HIGH)
+            elif right_fwd:
+                # Right motor moving forwards
+                self._MOTOR_PINS["IN1"].value = True
+                self._MOTOR_PINS["IN2"].value = False
 
             else:
-                # Right motor moving forwards
-                GPIO.output(self._PIN_MAP["IN1"], GPIO.HIGH)
-                GPIO.output(self._PIN_MAP["IN2"], GPIO.LOW)
+                # Right motor moving backwards
+                self._MOTOR_PINS["IN1"].value = False
+                self._MOTOR_PINS["IN2"].value = True
 
             self._duty_cycle_r = duty_cycle_r
+
             rospy.logdebug("PWM Right: {}".format(self._duty_cycle_r))
-            self._motor_r_pwm.ChangeDutyCycle(abs(self._duty_cycle_r))
+            self._pca.channels[0].duty_cycle = int(65535 * self._duty_cycle_r)
 
         if duty_cycle_l != self._duty_cycle_l:
             if duty_cycle_l == 0:
-                # Right motor not moving
-                GPIO.output(self._PIN_MAP["IN3"], GPIO.LOW)
-                GPIO.output(self._PIN_MAP["IN4"], GPIO.LOW)
+                # Left motor not moving
+                self._MOTOR_PINS["IN3"].value = False
+                self._MOTOR_PINS["IN4"].value = False
 
-            elif duty_cycle_l < 0:
-                # Right motor moving backwards
-                GPIO.output(self._PIN_MAP["IN3"], GPIO.HIGH)
-                GPIO.output(self._PIN_MAP["IN4"], GPIO.LOW)
+            elif left_fwd:
+                # Left motor moving forwards
+                self._MOTOR_PINS["IN3"].value = True
+                self._MOTOR_PINS["IN4"].value = False
 
             else:
-                # Right motor moving forwards
-                GPIO.output(self._PIN_MAP["IN3"], GPIO.LOW)
-                GPIO.output(self._PIN_MAP["IN4"], GPIO.HIGH)
+                # Left motor moving backwards
+                self._MOTOR_PINS["IN3"].value = False
+                self._MOTOR_PINS["IN4"].value = True
 
             self._duty_cycle_l = duty_cycle_l
+    
             rospy.logdebug("PWM Left: {}".format(self._duty_cycle_l))
-            self._motor_l_pwm.ChangeDutyCycle(abs(self._duty_cycle_l))
+            self._pca.channels[1].duty_cycle = int(65535 * self._duty_cycle_l)
 
     @staticmethod
-    def _decode_msg(msg: int, duty_cycle_step: int = 20):
+    def _decode_msg(msg: int, duty_cycle_step: int = 0.2):
         """
         Decodes Message (Int8) into the PWM (% duty cycle) of the right and left motor signals 
         based on the following encoding:
@@ -130,6 +137,7 @@ class DriverNode(object):
         """
         duty_cycle_r = 0
         duty_cycle_l = 0
+        left_fwd = True
 
         if msg & (1 << 1):
             duty_cycle_r += duty_cycle_step
@@ -145,7 +153,13 @@ class DriverNode(object):
             duty_cycle_l = -(duty_cycle_l + duty_cycle_step)
             duty_cycle_r = -(duty_cycle_r + duty_cycle_step)
 
-        return (duty_cycle_r, duty_cycle_l)
+        right_fwd =  duty_cycle_r >= 0
+        left_fwd = duty_cycle_l >= 0
+
+        duty_cycle_r = min(abs(duty_cycle_r), 1.0)
+        duty_cycle_l = min(abs(duty_cycle_l), 1.0)
+
+        return (duty_cycle_r, duty_cycle_l, right_fwd, left_fwd)
  
 
 if __name__ == '__main__':
