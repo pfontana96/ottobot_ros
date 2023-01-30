@@ -5,6 +5,7 @@ from std_msgs.msg import Int8
 import sys
 from select import select
 import threading
+from collections import OrderedDict
 
 if sys.platform == 'win32':
     import msvcrt
@@ -15,13 +16,15 @@ else:
 
 class TerminalMonitorThread(threading.Thread):
 
+    _VALID_KEYS = ["q", "w", "e", "a", "d", "z", "x", "c", "", '\x03']
+
     def __init__(self, key_timeout: float):
         super(TerminalMonitorThread, self).__init__()
 
         self._lock = threading.Lock()
         self._done = False
 
-        self._last_keys = dict()  # Using dictionary as an Ordered set
+        self._last_keys = OrderedDict()  # Using dictionary as an Ordered set
 
         self._terminal_settings = self._save_terminal_settings()
         self._timeout = key_timeout
@@ -39,12 +42,17 @@ class TerminalMonitorThread(threading.Thread):
         except KeyError:
             pass
 
-        # If there is nothing left, then return empty string, else return last component
+        # If there is nothing left, then return empty string, else return most retrieved key
         if not last_keys:
             key = ""
         
         else:
-            key = list(last_keys.keys())[-1]
+            try:
+                if last_keys['\x03'] >= 0:
+                    key = '\x03'
+
+            except KeyError:
+                key = max(last_keys, key=last_keys.get)
 
         return key
 
@@ -58,35 +66,47 @@ class TerminalMonitorThread(threading.Thread):
 
             key = self._get_key(self._terminal_settings, self._timeout)
 
-            with self._lock:
-                self._last_keys.update({key: None})
+            if key in self._VALID_KEYS:
+                with self._lock:
+                    if key not in self._last_keys.keys():
+                        self._last_keys.update({key: 0})
+
+                    self._last_keys[key] += 1
 
     @staticmethod
     def _get_key(settings, timeout):
         if sys.platform == 'win32':
             # getwch() returns a string on Windows
             key = msvcrt.getwch()
+
         else:
             tty.setraw(sys.stdin.fileno())
             # sys.stdin.read() returns a string on Linux
             rlist, _, _ = select([sys.stdin], [], [], timeout)
+
             if rlist:
                 key = sys.stdin.read(1)
+
             else:
                 key = ''
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
+
         return key
 
     @staticmethod
     def _save_terminal_settings():
+
         if sys.platform == 'win32':
             return None
+
         return termios.tcgetattr(sys.stdin)
 
     @staticmethod
     def _restore_terminal_settings(old_settings):
+
         if sys.platform == 'win32':
             return
+
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
 
 # Message trame
@@ -113,7 +133,7 @@ class TeleopNode:
         self._pub = rospy.Publisher(topic_name, Int8, queue_size=10) # "key" is the publisher name
         self._rate = rospy.Rate(rate)
 
-        key_timeout = 1 / (5 * rate)  # x10 faster than publisher Node
+        key_timeout = 1 / (10 * rate)  # x10 faster than publisher Node
         self._terminal_monitor_thread = TerminalMonitorThread(key_timeout=key_timeout)
 
         self._key_bindings = {
@@ -152,7 +172,8 @@ class TeleopNode:
                     break
 
                 msg = self._encode_msg(key=key)
-                self._pub.publish(msg)              
+                self._pub.publish(msg)
+
                 self._rate.sleep()
 
         finally:
@@ -176,5 +197,6 @@ if __name__ == '__main__':
 
     try:
         teleop_driver.run()
+
     except rospy.ROSInterruptException:
         pass
