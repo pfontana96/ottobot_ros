@@ -38,14 +38,14 @@ class TerminalMonitorThread(threading.Thread):
         # rospy.logdebug("Collected keys {}\r\n".format(last_keys.keys()))
         try:
             last_keys.pop("")  # Remove empty keys that might have been collected
-        
+
         except KeyError:
             pass
 
         # If there is nothing left, then return empty string, else return most retrieved key
         if not last_keys:
             key = ""
-        
+
         else:
             try:
                 if last_keys['\x03'] >= 0:
@@ -109,6 +109,7 @@ class TerminalMonitorThread(threading.Thread):
 
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
 
+
 # Message trame
 # b'up dn lt rt
 # Example: 1001 => up & right
@@ -119,6 +120,7 @@ class TeleopNode:
     \ta   d
     \tz x c
     """
+
     def __init__(self, verbose: bool = False):
 
         rospy.init_node(
@@ -130,7 +132,7 @@ class TeleopNode:
         rate = rospy.get_param("{}/rate".format(nodename), 10.0)
         topic_name = rospy.get_param("{}/out_topic".format(nodename), "key_teleop")
 
-        self._pub = rospy.Publisher(topic_name, Int8, queue_size=10) # "key" is the publisher name
+        self._pub = rospy.Publisher(topic_name, Int8, queue_size=10)  # "key" is the publisher name
         self._rate = rospy.Rate(rate)
 
         key_timeout = 1 / (10 * rate)  # x10 faster than publisher Node
@@ -147,7 +149,7 @@ class TeleopNode:
             "c": 0b0101,
             "": 0
         }
-    
+
     def wait_for_subscribers(self):
         i = 0
         while not rospy.is_shutdown() and self._pub.get_num_connections() == 0:
@@ -183,7 +185,7 @@ class TeleopNode:
         msg = 0
         if key in self._key_bindings:
             msg = self._key_bindings[key]
-        
+
         else:
             rospy.logdebug(self._INFO_MSG)
 

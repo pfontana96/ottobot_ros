@@ -55,7 +55,7 @@ class DriverNode(object):
         rospy.logdebug("Initialising PINs..")
         self._init_motor_pins()
         rospy.logdebug("DONE")
-        
+
         rospy.logdebug("Subscribing to '{}'..".format(in_topic))
         self._sub = rospy.Subscriber(in_topic, Int8, self.callback)
 
@@ -123,14 +123,14 @@ class DriverNode(object):
                 self._MOTOR_PINS["IN4"].value = True
 
             self._duty_cycle_l = duty_cycle_l
-    
+
             rospy.logdebug("PWM Left: {}".format(self._duty_cycle_l))
             self._pca.channels[1].duty_cycle = int(65535 * self._duty_cycle_l)
 
     @staticmethod
     def _decode_msg(msg: int, duty_cycle_step: int = 0.2):
         """
-        Decodes Message (Int8) into the PWM (% duty cycle) of the right and left motor signals 
+        Decodes Message (Int8) into the PWM (% duty cycle) of the right and left motor signals
         based on the following encoding:
             b'up dn lt rt
         Example: 1001 (9) => up & right
@@ -142,25 +142,25 @@ class DriverNode(object):
         if msg & (1 << 1):
             duty_cycle_r += duty_cycle_step
 
-        elif msg & 1: # Turning left and right at the same time makes no sense
+        elif msg & 1:  # Turning left and right at the same time makes no sense
             duty_cycle_l += duty_cycle_step
 
         if msg & (1 << 3):
             duty_cycle_l += duty_cycle_step
             duty_cycle_r += duty_cycle_step
 
-        elif msg & (1 << 2): # Going fwd and bwd at the same time makes no sense
+        elif msg & (1 << 2):  # Going fwd and bwd at the same time makes no sense
             duty_cycle_l = -(duty_cycle_l + duty_cycle_step)
             duty_cycle_r = -(duty_cycle_r + duty_cycle_step)
 
-        right_fwd =  duty_cycle_r >= 0
+        right_fwd = duty_cycle_r >= 0
         left_fwd = duty_cycle_l >= 0
 
         duty_cycle_r = min(abs(duty_cycle_r), 1.0)
         duty_cycle_l = min(abs(duty_cycle_l), 1.0)
 
         return (duty_cycle_r, duty_cycle_l, right_fwd, left_fwd)
- 
+
 
 if __name__ == '__main__':
 

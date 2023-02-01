@@ -1,8 +1,8 @@
 import abc
 from typing import Union, Tuple
-from collections import OrderedDict
 
 import numpy as np
+
 
 class BaseRGBDCamera(abc.ABC):
 
@@ -42,22 +42,22 @@ class BaseRGBDCamera(abc.ABC):
         pass
 
     @property
-    def intrinsics(self) -> OrderedDict:
+    def intrinsics(self) -> dict:
         """Camera intrinsics
 
         Returns
         -------
-        OrderedDict
+        dict
             Dictionary containing camera intrinsics with keys: `intrinsics, coefficients, depth_scale`
         """
         if self._intrinsics is None:
             intrinsics_matrix, distorssion_coefficients, depth_scale = self._compute_intrinsics()
 
-            self._intrinsics = OrderedDict({
-                "intrinsics": intrinsics_matrix.astype(np.float32),
-                "coefficients": distorssion_coefficients.astype(np.float32),
+            self._intrinsics = {
+                "intrinsics": intrinsics_matrix.astype(np.float32).tolist(),
+                "coefficients": distorssion_coefficients.astype(np.float32).tolist(),
                 "depth_scale": depth_scale
-            })
+            }
 
         return self._intrinsics
 

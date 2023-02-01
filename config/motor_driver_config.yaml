@@ -1,2 +1,2 @@
-out_topic: key_teleoperation
-duty_cycle_step: 20
+in_topic: key_teleoperation
+duty_cycle_step: 0.4

@@ -41,11 +41,11 @@ class RealSenseD435i(BaseRGBDCamera):
         config = rs.config()
 
         self._enable_images_streams(config)
-    
+
     def _enable_images_streams(self, config: rs.config) -> None:
-        
+
         logger.info("Configuring Depth and Color streams..")
-        
+
         if self._device_id is not None:
             config.enable_device(self._device_id)
 
@@ -54,7 +54,7 @@ class RealSenseD435i(BaseRGBDCamera):
 
         if self._align_to == "depth":
             self._align = rs.align(rs.stream.depth)
-        
+
         else:
             self._align = rs.align(rs.stream.color)
 
@@ -104,7 +104,7 @@ class RealSenseD435i(BaseRGBDCamera):
 
         else:
             frame = self._rs_images_profile.get_stream(rs.stream.color)
-        
+
         intrinsics = frame.as_video_stream_profile().intrinsics
 
         # Create camera matrix

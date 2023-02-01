@@ -3,18 +3,21 @@ import rospy
 from sensor_msgs.msg import Image, CompressedImage
 from cv_bridge import CvBridge, CvBridgeError
 
+from pathlib import Path
+
 import pyrealsense2 as rs
 import numpy as np
 import yaml
-from  pathlib import Path
 import cv2
 
 from ottobot.rgbd_camera.realsensed435i import RealSenseD435i
+
 
 # PyYaml workaround for indentation
 class MyDumper(yaml.Dumper):
     def increase_indent(self, flow=False, indentless=False):
         return super(MyDumper, self).increase_indent(flow, False)
+
 
 class RealSenseCameraNode:
     def __init__(self, verbose: bool = False):
@@ -23,28 +26,32 @@ class RealSenseCameraNode:
         nodename = rospy.get_name()
 
         self._frame_id = rospy.get_param("{}/frame_id".format(nodename), "map")
-        self._frame_rate = rospy.get_param("{}/frame_rate".format(nodename), 15) # Defaults to 15 fps
+        self._frame_rate = rospy.get_param("{}/frame_rate".format(nodename), 15)  # Defaults to 15 fps
         self._compressed = rospy.get_param("{}/compress".format(nodename), False)
         self._ros_rate = rospy.Rate(self._frame_rate)
 
         self._calibration_filename = rospy.get_param("{}/calibration_filename".format(nodename), "camera_intrinsics")
 
         color_topic = rospy.get_param("{}/color_topic".format(nodename), "{}/raw/color_image".format(nodename))
-        depth_topic = rospy.get_param("{}/color_depth_topic".format(nodename), "{}/raw/depth_image".format(nodename))
+        depth_topic = rospy.get_param("{}/depth_topic".format(nodename), "{}/raw/depth_image".format(nodename))
 
         self._rgb_pub = rospy.Publisher(color_topic, Image, queue_size=5)
         self._depth_pub = rospy.Publisher(depth_topic, Image, queue_size=5)
 
         if self._compressed:
-            self._color_pub_compressed = rospy.Publisher("{}/compressed".format(color_topic), CompressedImage, queue_size=5)
-            self._depth_pub_compressed = rospy.Publisher("{}/compressed".format(depth_topic), CompressedImage, queue_size=5)
+            self._color_pub_compressed = rospy.Publisher(
+                "{}/compressed".format(color_topic), CompressedImage, queue_size=5
+            )
+            self._depth_pub_compressed = rospy.Publisher(
+                "{}/compressed".format(depth_topic), CompressedImage, queue_size=5
+            )
 
         self._height = 480
         self._width = 848
 
         rospy.loginfo("Initializing camera node ({} fps): {}x{}..".format(self._frame_rate, self._height, self._width))
 
-        self._camera = None                                       
+        self._camera = None
         ctx = rs.context()
         devices = ctx.query_devices()
 
@@ -57,7 +64,7 @@ class RealSenseCameraNode:
         self._camera = RealSenseD435i(ctx, self._frame_rate, self._height, self._width, dev_id)
 
         self._cv_bridge = CvBridge()
-    
+
     def run(self):
 
         try:
@@ -81,7 +88,7 @@ class RealSenseCameraNode:
             while not rospy.is_shutdown():
                 # Read camera
                 self._camera.poll()
-                
+
                 # Get time stamp
                 now = rospy.get_rostime()
 
@@ -125,7 +132,6 @@ class RealSenseCameraNode:
         color_image_msg.header.frame_id = self._frame_id
         color_image_msg.header.frame_id = self._frame_id
 
-
         self._rgb_pub.publish(color_image_msg)
         self._depth_pub.publish(depth_image_msg)
 
@@ -138,13 +144,13 @@ class RealSenseCameraNode:
         depth_image_msg.header.stamp = time
         depth_image_msg.header.frame_id = self._frame_id
         depth_image_msg.format = "jpeg"
-        depth_image_msg.data = np.array(cv2.imencode('.jpg', depth_colormap)[1]).tostring()
+        depth_image_msg.data = np.array(cv2.imencode('.jpg', depth_colormap)[1]).tobytes()
 
         color_image_msg = CompressedImage()
         color_image_msg.header.stamp = time
         color_image_msg.header.frame_id = self._frame_id
         color_image_msg.format = "jpeg"
-        color_image_msg.data = np.array(cv2.imencode('.jpg', color_image)[1]).tostring()
+        color_image_msg.data = np.array(cv2.imencode('.jpg', color_image)[1]).tobytes()
 
         self._color_pub_compressed.publish(color_image_msg)
         self._depth_pub_compressed.publish(depth_image_msg)
@@ -154,4 +160,3 @@ if __name__ == "__main__":
 
     rs_camera_node = RealSenseCameraNode()
     rs_camera_node.run()
-
