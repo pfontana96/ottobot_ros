@@ -1,0 +1,5 @@
+<launch>
+    <node pkg="ottobot_ros" type="node_dataset_generator.py" name="datagen" ns="ottobot" output="screen">
+        <rosparam file="$(find ottobot_ros)/config/dataset_generator_config.yaml"/>
+    </node>
+</launch>

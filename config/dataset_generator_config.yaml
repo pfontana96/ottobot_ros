@@ -1,0 +1,4 @@
+color_in: /ottobot/realsense/raw/color_image
+depth_in: /ottobot/realsense/raw/depth_image
+output_dir: /home/ottobot/dataset/desk-data
+rate: 30

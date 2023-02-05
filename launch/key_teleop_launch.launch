@@ -1,0 +1,5 @@
+<launch>
+    <node pkg="ottobot_ros" type="node_key_teleop.py" name="key_teleop" ns="ottobot" output="screen">
+        <rosparam file="$(find ottobot_ros)/config/key_teleop_config.yaml"/>
+    </node>
+</launch>
