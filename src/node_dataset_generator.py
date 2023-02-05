@@ -66,7 +66,7 @@ class DatasetGeneratorNode:
 
         color_dir = self._output_dir / "rgb"
         depth_dir = self._output_dir / "depth"
-        groundtruth_file = self._output_dir / "groundtruth.json"
+        groundtruth_file = self._output_dir / "ground_truth.json"
 
         color_dir.mkdir(exist_ok=True)
         depth_dir.mkdir(exist_ok=True)
