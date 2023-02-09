@@ -1,0 +1,5 @@
+<launch>
+    <node pkg="ottobot_ros" type="node_dataset_visualizer.py" name="dataviz" ns="ottobot" output="screen">
+        <rosparam file="$(find ottobot_ros)/config/dataset_visualizer_config.yaml"/>
+    </node>
+</launch>

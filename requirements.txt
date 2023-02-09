@@ -2,3 +2,4 @@ wheel
 pyyaml~=6.0.0
 Jetson.GPIO~=2.0.20
 adafruit-circuitpython-pca9685
+git+https://github.com/pfontana96/dense-visual-odometry@jetson-nano
