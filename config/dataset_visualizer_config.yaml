@@ -1,3 +1,7 @@
-rate: 10
+rate: 8
 plot_pointcloud: true
-report_file: /mnt/c/Users/pedro/Documents/ottobot_report_fr1.json
+report_file: /mnt/c/Users/pedro/Documents/ottobot_weighted_living_tour_1.json
+# report_file: /mnt/c/Users/pedro/Documents/ottobot_report_fr1.json
+# report_file: /mnt/c/Users/pedro/Documents/dummy_report.json
+baselink_frame_id: base_link
+frame_id: camera

@@ -1,4 +1,6 @@
 <launch>
+    <!-- <node pkg="tf2_ros" type="static_transform_publisher" name="baselink_to_camera" ns="ottobot" args="0.0 0.0 0.2 -0.5 0.5 -0.5 0.5 base_link camera"/> -->
+
     <node pkg="ottobot_ros" type="node_dataset_visualizer.py" name="dataviz" ns="ottobot" output="screen">
         <rosparam file="$(find ottobot_ros)/config/dataset_visualizer_config.yaml"/>
     </node>
