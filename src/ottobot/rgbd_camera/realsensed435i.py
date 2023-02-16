@@ -1,6 +1,8 @@
 import logging
 import time
-from typing import Tuple
+from typing import Tuple, Union
+from pathlib import Path
+import json
 
 import pyrealsense2 as rs
 import numpy as np
@@ -11,13 +13,18 @@ from ottobot.rgbd_camera.base_rgbdcamera import BaseRGBDCamera
 logger = logging.getLogger(__name__)
 
 
+class RealSenseD453iError(Exception):
+    pass
+
+
 class RealSenseD435i(BaseRGBDCamera):
 
     _ALIGN_TO_VALID_OPTIONS = ["color", "depth"]
 
     # TODO: Fix doc to get correct pyrealsense types on type hints
     def __init__(
-        self, context: rs.context, fps: int, height: int, width: int, device_id: int = None, align_to: str = "depth"
+        self, context: rs.context, fps: int, height: int, width: int, device: rs.device, align_to: str = "depth",
+        rs_viewer_config: Union[str, Path] = None
     ):
 
         assertion_msg = "Got invalid 'align_to' option '{}', valid values are '{}'".format(
@@ -30,12 +37,29 @@ class RealSenseD435i(BaseRGBDCamera):
         self._fps = fps
         self._height = height
         self._width = width
-        self._device_id = device_id
         self._align_to = align_to
 
         self._rs_context = context
+        self._device = device
+        self._device_id = self._device.get_info(rs.camera_info.serial_number)
+
+        logger.info("Resetting '{}'..".format(self._device_id))
+        self._device.hardware_reset()
+        logger.info("DONE")
 
         self._rs_align = None
+
+        if rs_viewer_config is not None:
+            self._rs_config_file = Path(rs_viewer_config).resolve()
+
+            if not self._rs_config_file.exists():
+                logger.error(
+                    "Could not find RealSense Viewer config file at '{}'. Skipping configuration from file".format(
+                        str(self._rs_config_file)
+                    )
+                )
+
+                self._rs_config_file = None
 
         self._rs_images_pipeline = rs.pipeline(self._rs_context)
         config = rs.config()
@@ -90,6 +114,28 @@ class RealSenseD435i(BaseRGBDCamera):
 
         logger.info("Images streams are up, waiting 2 seconds to allow camera to warm up")
         time.sleep(2)
+
+        # Load config file
+        if self._rs_config_file is not None:
+
+            logger.info("Loading Advanced configurations from file..")
+
+            with self._rs_config_file.open("r") as fp:
+                rs_viewer_data = json.load(fp)
+
+            try:
+
+                device_data = rs_viewer_data["parameters"]
+
+                advnc_mode = rs.rs400_advanced_mode(self._device)
+                advnc_mode.load_json(json.dumps(device_data))
+
+            except Exception as e:
+                raise RealSenseD453iError("Unexpected error when loading camera config from '{}': '{}'".format(
+                    str(self._rs_config_file), e
+                ))
+
+            logger.info("Configuration file loaded")
 
         logger.info("DONE")
 

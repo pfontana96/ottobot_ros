@@ -28,6 +28,7 @@ class RealSenseCameraNode:
         self._frame_id = rospy.get_param("{}/frame_id".format(nodename), "map")
         self._frame_rate = rospy.get_param("{}/frame_rate".format(nodename), 15)  # Defaults to 15 fps
         self._compressed = rospy.get_param("{}/compress".format(nodename), False)
+        self._rs_config_file = rospy.get_param("{}/rs_config_file".format(nodename), None)
         self._ros_rate = rospy.Rate(self._frame_rate)
 
         self._calibration_filename = rospy.get_param("{}/calibration_filename".format(nodename), "camera_intrinsics")
@@ -55,13 +56,12 @@ class RealSenseCameraNode:
         ctx = rs.context()
         devices = ctx.query_devices()
 
-        dev_id = devices[0].get_info(rs.camera_info.serial_number)
-        rospy.loginfo("Device found '{}' ({})".format(devices[0].get_info(rs.camera_info.name), dev_id))
-        rospy.loginfo("Resetting..")
-        devices[0].hardware_reset()
-        rospy.loginfo("DONE")
+        rospy.loginfo("Device found '{}'".format(devices[0].get_info(rs.camera_info.name)))
 
-        self._camera = RealSenseD435i(ctx, self._frame_rate, self._height, self._width, dev_id)
+        self._camera = RealSenseD435i(
+            context=ctx, fps=self._frame_rate, height=self._height, width=self._width, device=devices[0],
+            align_to="depth", rs_viewer_config=self._rs_config_file
+        )
 
         self._cv_bridge = CvBridge()
 
