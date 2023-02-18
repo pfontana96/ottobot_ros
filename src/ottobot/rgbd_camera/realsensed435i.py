@@ -2,7 +2,7 @@ import logging
 import time
 from typing import Tuple, Union
 from pathlib import Path
-import json
+# import json
 
 import pyrealsense2 as rs
 import numpy as np
@@ -24,8 +24,12 @@ class RealSenseD435i(BaseRGBDCamera):
     # TODO: Fix doc to get correct pyrealsense types on type hints
     def __init__(
         self, context: rs.context, fps: int, height: int, width: int, device: rs.device, align_to: str = "depth",
-        rs_viewer_config: Union[str, Path] = None
+        rs_viewer_config: Union[str, Path] = None, exposure: int = None, gain: int = 51
     ):
+        assertion_msg = "Expected device to be 'D435I', got '{}'".format(
+            device.get_info(rs.camera_info.name).split(" ")[-1]
+        )
+        assert device.get_info(rs.camera_info.name).split(" ")[-1] == "D435I", assertion_msg
 
         assertion_msg = "Got invalid 'align_to' option '{}', valid values are '{}'".format(
             align_to, self._ALIGN_TO_VALID_OPTIONS
@@ -38,17 +42,25 @@ class RealSenseD435i(BaseRGBDCamera):
         self._height = height
         self._width = width
         self._align_to = align_to
+        self._exposure = exposure
+        self._gain = gain
 
         self._rs_context = context
         self._device = device
         self._device_id = self._device.get_info(rs.camera_info.serial_number)
 
-        logger.info("Resetting '{}'..".format(self._device_id))
+        logger.info("{} '{}' (firmware {})".format(
+            self._device.get_info(rs.camera_info.name), self._device_id,
+            self._device.get_info(rs.camera_info.firmware_version)
+        ))
+
+        logger.info("Resetting..")
         self._device.hardware_reset()
         logger.info("DONE")
 
         self._rs_align = None
 
+        self._rs_config_file = None
         if rs_viewer_config is not None:
             self._rs_config_file = Path(rs_viewer_config).resolve()
 
@@ -65,6 +77,22 @@ class RealSenseD435i(BaseRGBDCamera):
         config = rs.config()
 
         self._enable_images_streams(config)
+
+    @staticmethod
+    def _try_set_rs_option(sensor: rs.sensor, option: rs.option, value, attemps: int = 5, timeout: float = 1):
+
+        try:
+            for i in range(attemps):
+                sensor.set_option(option, value)
+
+        except Exception as e:
+            logger.warning(
+                "[{}/{}] Got unexpected exception setting up option '{}' ({}), trying again in {:.3f} s..".format(
+                    i + 1, attemps, str(option).split('.')[-1], e, timeout
+                )
+            )
+
+            time.sleep(timeout)
 
     def _enable_images_streams(self, config: rs.config) -> None:
 
@@ -86,15 +114,19 @@ class RealSenseD435i(BaseRGBDCamera):
         streams_up = False
         attemps = 5
 
-        for _ in range(attemps):
+        for i in range(attemps):
             try:
                 self._rs_images_profile = self._rs_images_pipeline.start(config)
                 streams_up = True
 
             except Exception as e:
-                logger.warning("Got exception while trying to setup images streams '{}', trying again..".format(
-                    e
-                ))
+                logger.warning(
+                    "[{}/{}] Unexpected exception while trying to setup streams '{}', trying again in 1 s..".format(
+                        i, attemps, e
+                    )
+                )
+
+                time.sleep(1)
 
             if streams_up:
                 break
@@ -115,29 +147,63 @@ class RealSenseD435i(BaseRGBDCamera):
         logger.info("Images streams are up, waiting 2 seconds to allow camera to warm up")
         time.sleep(2)
 
-        # Load config file
-        if self._rs_config_file is not None:
+        # Disable color autoexposure if an exposure time was set
+        if self._exposure is not None:
+            logger.info("Disabling auto-exposure on color sensor, setting exposure time to {} us".format(
+                self._exposure
+            ))
+            color_sensor = self._device.first_color_sensor()
+            self._try_set_rs_option(color_sensor, rs.option.enable_auto_exposure, 0)
+            self._try_set_rs_option(color_sensor, rs.option.exposure, self._exposure)
+            self._try_set_rs_option(color_sensor, rs.option.gain, self._gain)
 
-            logger.info("Loading Advanced configurations from file..")
+            logger.info("DONE")
 
-            with self._rs_config_file.open("r") as fp:
-                rs_viewer_data = json.load(fp)
+        # NOTE: Loading advanced mode from JSON failing with 'could not set power mode'
+        # # Load config file
+        # if self._rs_config_file is not None:
 
-            try:
+        #     logger.info("Loading Advanced configurations from file..")
 
-                device_data = rs_viewer_data["parameters"]
+        #     with self._rs_config_file.open("r") as fp:
+        #         rs_viewer_data = json.load(fp)
 
-                advnc_mode = rs.rs400_advanced_mode(self._device)
-                advnc_mode.load_json(json.dumps(device_data))
+        #     device_data = rs_viewer_data["parameters"]
 
-            except Exception as e:
-                raise RealSenseD453iError("Unexpected error when loading camera config from '{}': '{}'".format(
-                    str(self._rs_config_file), e
-                ))
+        #     advnc_mode = rs.rs400_advanced_mode(self._device)
 
-            logger.info("Configuration file loaded")
+        #     if not advnc_mode.is_enabled():
 
-        logger.info("DONE")
+        #         raise RealSenseD435i("Advanced mode on device '{}' is disabled".format(
+        #             self._device.get_info(rs.camera_info.name)
+        #         ))
+
+        #     device_configured_on_advnc_mode = False
+        #     ser_dev = rs.serializable_device(self._device)
+        #     for i in range(attemps):
+        #         try:
+        #             ser_dev.load_json(json.dumps(device_data).replace("'", '\"'))
+        #             device_configured_on_advnc_mode = True
+
+        #         except Exception as e:
+        #             logger.warning(
+        #                 "[{}/{}] Unexpected exception while loading config '{}', trying again in 1 s..".format(
+        #                 i, attemps, e
+        #             ))
+
+        #             time.sleep(1)
+
+        #         if device_configured_on_advnc_mode:
+        #             break
+
+        #     if not device_configured_on_advnc_mode:
+        #         raise RealSenseD453iError("Unexpected error when loading camera config from '{}': '{}'".format(
+        #             str(self._rs_config_file), e
+        #         ))
+
+        #     logger.info("Configuration file loaded")
+
+        logger.info("Finished configuration")
 
     def _compute_intrinsics(self) -> Tuple[np.ndarray, np.ndarray, float]:
 

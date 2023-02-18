@@ -11,6 +11,7 @@ import yaml
 import cv2
 
 from ottobot.rgbd_camera.realsensed435i import RealSenseD435i
+from ottobot.log import route_logger_to_ros
 
 
 # PyYaml workaround for indentation
@@ -22,6 +23,7 @@ class MyDumper(yaml.Dumper):
 class RealSenseCameraNode:
     def __init__(self, verbose: bool = False):
         rospy.init_node("realsense_node", anonymous=True, log_level=(rospy.DEBUG if verbose else rospy.INFO))
+        route_logger_to_ros("ottobot")
 
         nodename = rospy.get_name()
 
@@ -29,6 +31,7 @@ class RealSenseCameraNode:
         self._frame_rate = rospy.get_param("{}/frame_rate".format(nodename), 15)  # Defaults to 15 fps
         self._compressed = rospy.get_param("{}/compress".format(nodename), False)
         self._rs_config_file = rospy.get_param("{}/rs_config_file".format(nodename), None)
+        self._rs_color_exposure = rospy.get_param("{}/rs_color_exposure", 78)
         self._ros_rate = rospy.Rate(self._frame_rate)
 
         self._calibration_filename = rospy.get_param("{}/calibration_filename".format(nodename), "camera_intrinsics")
@@ -60,7 +63,7 @@ class RealSenseCameraNode:
 
         self._camera = RealSenseD435i(
             context=ctx, fps=self._frame_rate, height=self._height, width=self._width, device=devices[0],
-            align_to="depth", rs_viewer_config=self._rs_config_file
+            align_to="depth", rs_viewer_config=self._rs_config_file, exposure=self._rs_color_exposure
         )
 
         self._cv_bridge = CvBridge()

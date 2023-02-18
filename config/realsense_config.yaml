@@ -1,4 +1,5 @@
 frame_rate: 15
 frame_id: map
 compress: true
-rs_config_file: /home/ottobot/config/realsense_config.json
+exposure: 78
+# rs_config_file: /home/ottobot/config/realsense_config.json
