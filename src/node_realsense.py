@@ -1,4 +1,6 @@
 #!/usr/bin/python3
+from collections import OrderedDict
+
 import rospy
 from sensor_msgs.msg import Image, CompressedImage
 from cv_bridge import CvBridge, CvBridgeError
@@ -39,6 +41,14 @@ class RealSenseCameraNode:
         color_topic = rospy.get_param("{}/color_topic".format(nodename), "{}/raw/color_image".format(nodename))
         depth_topic = rospy.get_param("{}/depth_topic".format(nodename), "{}/raw/depth_image".format(nodename))
 
+        depth_filters = rospy.get_param("{}/filters".format(nodename), None)
+        if depth_filters is not None:  # NOTE: If not, rosparam server orders filters alphabetically
+            self._depth_filters = OrderedDict({})
+            for rs_filter in depth_filters:
+                self._depth_filters.update(rs_filter)
+        # if rs_filters is not None:
+        #     rospy.loginfo("Got filters:\n{}".format(rs_filters))
+
         self._rgb_pub = rospy.Publisher(color_topic, Image, queue_size=5)
         self._depth_pub = rospy.Publisher(depth_topic, Image, queue_size=5)
 
@@ -63,7 +73,8 @@ class RealSenseCameraNode:
 
         self._camera = RealSenseD435i(
             context=ctx, fps=self._frame_rate, height=self._height, width=self._width, device=devices[0],
-            align_to="depth", rs_viewer_config=self._rs_config_file, exposure=self._rs_color_exposure
+            align_to="depth", rs_viewer_config=self._rs_config_file, exposure=self._rs_color_exposure,
+            depth_filters=self._depth_filters
         )
 
         self._cv_bridge = CvBridge()

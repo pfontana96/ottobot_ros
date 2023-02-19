@@ -2,4 +2,12 @@ frame_rate: 15
 frame_id: map
 compress: true
 exposure: 78
+filters: [
+  decimation: {filter_magnitude: 2.0},
+  threshold: {min_distance: 0.1, max_distance: 5.0},
+  depth_to_disparity: {},
+  spatial: {filter_magnitude: 2.0, filter_smooth_alpha: 0.5, filter_smooth_delta: 20.0},
+  temporal: {filter_smooth_alpha: 0.4, filter_smooth_delta: 20.0},
+  disparity_to_depth: {}
+]
 # rs_config_file: /home/ottobot/config/realsense_config.json
