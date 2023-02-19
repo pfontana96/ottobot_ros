@@ -1,4 +1,6 @@
 #!/usr/bin/python3
+from collections import OrderedDict
+
 import rospy
 from sensor_msgs.msg import Image, CompressedImage
 from cv_bridge import CvBridge, CvBridgeError
@@ -11,6 +13,7 @@ import yaml
 import cv2
 
 from ottobot.rgbd_camera.realsensed435i import RealSenseD435i
+from ottobot.log import route_logger_to_ros
 
 
 # PyYaml workaround for indentation
@@ -22,18 +25,29 @@ class MyDumper(yaml.Dumper):
 class RealSenseCameraNode:
     def __init__(self, verbose: bool = False):
         rospy.init_node("realsense_node", anonymous=True, log_level=(rospy.DEBUG if verbose else rospy.INFO))
+        route_logger_to_ros("ottobot")
 
         nodename = rospy.get_name()
 
         self._frame_id = rospy.get_param("{}/frame_id".format(nodename), "map")
         self._frame_rate = rospy.get_param("{}/frame_rate".format(nodename), 15)  # Defaults to 15 fps
         self._compressed = rospy.get_param("{}/compress".format(nodename), False)
+        self._rs_config_file = rospy.get_param("{}/rs_config_file".format(nodename), None)
+        self._rs_color_exposure = rospy.get_param("{}/rs_color_exposure", 78)
         self._ros_rate = rospy.Rate(self._frame_rate)
 
         self._calibration_filename = rospy.get_param("{}/calibration_filename".format(nodename), "camera_intrinsics")
 
         color_topic = rospy.get_param("{}/color_topic".format(nodename), "{}/raw/color_image".format(nodename))
         depth_topic = rospy.get_param("{}/depth_topic".format(nodename), "{}/raw/depth_image".format(nodename))
+
+        depth_filters = rospy.get_param("{}/filters".format(nodename), None)
+        if depth_filters is not None:  # NOTE: If not, rosparam server orders filters alphabetically
+            self._depth_filters = OrderedDict({})
+            for rs_filter in depth_filters:
+                self._depth_filters.update(rs_filter)
+        # if rs_filters is not None:
+        #     rospy.loginfo("Got filters:\n{}".format(rs_filters))
 
         self._rgb_pub = rospy.Publisher(color_topic, Image, queue_size=5)
         self._depth_pub = rospy.Publisher(depth_topic, Image, queue_size=5)
@@ -55,13 +69,13 @@ class RealSenseCameraNode:
         ctx = rs.context()
         devices = ctx.query_devices()
 
-        dev_id = devices[0].get_info(rs.camera_info.serial_number)
-        rospy.loginfo("Device found '{}' ({})".format(devices[0].get_info(rs.camera_info.name), dev_id))
-        rospy.loginfo("Resetting..")
-        devices[0].hardware_reset()
-        rospy.loginfo("DONE")
+        rospy.loginfo("Device found '{}'".format(devices[0].get_info(rs.camera_info.name)))
 
-        self._camera = RealSenseD435i(ctx, self._frame_rate, self._height, self._width, dev_id)
+        self._camera = RealSenseD435i(
+            context=ctx, fps=self._frame_rate, height=self._height, width=self._width, device=devices[0],
+            align_to="depth", rs_viewer_config=self._rs_config_file, exposure=self._rs_color_exposure,
+            depth_filters=self._depth_filters
+        )
 
         self._cv_bridge = CvBridge()
 
