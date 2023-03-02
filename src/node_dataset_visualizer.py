@@ -1,4 +1,4 @@
-#! /home/ottobot/dev/ottobot_ws/venv/bin/python3
+#! /home/pedro/dev/ottobot_ws/venv/bin/python3
 
 import json
 from pathlib import Path
@@ -10,11 +10,21 @@ from std_msgs.msg import Header
 from geometry_msgs.msg import TransformStamped
 
 import numpy as np
+import numpy.testing as npt
 import cv2
 import tqdm
 
 from dense_visual_odometry.camera_model import RGBDCameraModel
 from dense_visual_odometry.utils.lie_algebra import Se3, So3
+
+
+def invert(transform: np.ndarray):
+
+    inverse = np.eye(4, dtype=np.float32)
+    inverse[:3, :3] = transform[:3, :3].T
+    inverse[:3, 3] = - transform[:3, :3].T @ transform[:3, 3]
+
+    return inverse
 
 
 class DatasetVisualizer:
@@ -38,6 +48,7 @@ class DatasetVisualizer:
         self._baselink_frame_id = rospy.get_param(
             "{}/baselink_frame_id".format(nodename), "base_link"
         )
+        self._absolute_transforms = rospy.get_param("{}/absolute", True)
 
         self._publish_pointcloud = rospy.get_param("{}/plot_pointcloud".format(nodename), False)
         if self._publish_pointcloud:
@@ -49,30 +60,35 @@ class DatasetVisualizer:
         self._tf_buffer = tf2_ros.Buffer()
         self._tf_listener = tf2_ros.TransformListener(self._tf_buffer)
 
-        self._robot_base_to_camera = Se3(
-            So3(np.array([0.5, -0.5, 0.5, -0.5], dtype=np.float32).reshape(4, 1), quat_repr="wxyz"),
-            np.asarray([0.0, 0.0, 0.2], dtype=np.float32).reshape(3, 1)
-        )
-
         self._load_data()
 
     def _load_data(self):
         with self._report_file.open("r") as fp:
             data = json.load(fp)
 
-            camera_poses_list = data["estimated_transforms"]
-            self._rgb_filepaths = data["rgb"]
-            self._depth_filepaths = data["depth"]
+            if not self._absolute_transforms:
+                camera_poses_list = data["estimated_transforms"]
+            else:
+                camera_poses_list = data["estimated_poses"]
+
+            self._rgb_images = data["rgb"]
+            self._depth_images = data["depth"]
             camera_intrinsics_file = Path(data["camera_intrinsics"])
 
         self._camera_model = RGBDCameraModel.load_from_yaml(camera_intrinsics_file)
         self._camera_poses = [None] * len(camera_poses_list)
-        for i, (camera_pose) in tqdm.tqdm(
-            enumerate(zip(camera_poses_list)), desc="Loading poses"
-        ):
+        for i, camera_pose in tqdm.tqdm(enumerate(camera_poses_list), desc="Loading poses"):
 
-            se3 = Se3.from_se3(np.array(camera_pose).reshape(6, 1).astype(np.float32))
+            # se3 = Se3.from_se3(np.array(camera_pose).reshape(6, 1).astype(np.float32))
+            se3 = Se3(
+                So3(np.roll(np.array(camera_pose[3:]).reshape(4, 1), 1)
+            ),
+                np.array(camera_pose[:3]).reshape(3, 1))
             self._camera_poses[i] = se3
+
+            if self._publish_pointcloud:
+                self._rgb_images[i] = cv2.cvtColor(cv2.imread(self._rgb_images[i], cv2.IMREAD_ANYCOLOR), cv2.COLOR_BGR2RGB)
+                self._depth_images[i] = cv2.imread(self._depth_images[i], cv2.IMREAD_UNCHANGED)
 
     def _try_get_transform(self, from_frame_id: str, to_frame_id: str) -> Se3:
         """Tries to get transform from `from_frame_id` to `to_frame_id`
@@ -109,6 +125,8 @@ class DatasetVisualizer:
                 np.array([tf_tvec.x, tf_tvec.y, tf_tvec.z], dtype=np.float32).reshape(3, 1)
             )
 
+            rospy.loginfo("\n{}".format(transform.exp()))
+
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
             rospy.logwarn("Lookup for transform from '{}' to '{}' failed with '{}' within {}s. Using Identity..".format(
                 self._frame_id, self._baselink_frame_id, e, timeout
@@ -123,10 +141,10 @@ class DatasetVisualizer:
 
         baselink_to_camera = self._try_get_transform(self._baselink_frame_id, self._frame_id)
 
-        accumulated_transform = Se3.identity() * baselink_to_camera
+        accumulated_transform = Se3.identity()
 
-        for i, (estimated_transform, rgb_path, depth_path) in enumerate(
-            zip(self._camera_poses, self._rgb_filepaths, self._depth_filepaths)
+        for i, (estimated_transform, rgb, depth) in enumerate(
+            zip(self._camera_poses, self._rgb_images, self._depth_images)
         ):
 
             if rospy.is_shutdown():
@@ -134,9 +152,13 @@ class DatasetVisualizer:
 
             stamp = rospy.Time.now()
 
-            accumulated_transform = accumulated_transform * estimated_transform
+            if not self._absolute_transforms:
+                accumulated_transform = accumulated_transform * estimated_transform.inverse()
 
-            robot_pose = accumulated_transform * baselink_to_camera.inverse()
+            else:
+                accumulated_transform = estimated_transform
+
+            robot_pose = baselink_to_camera * accumulated_transform
 
             quat = robot_pose.so3.quat.flatten().tolist()
             tvec = robot_pose.tvec.flatten().tolist()
@@ -144,9 +166,10 @@ class DatasetVisualizer:
             transform_stamped = TransformStamped()
             transform_stamped.header.stamp = stamp
             transform_stamped.header.frame_id = self._map_frame_id
-            transform_stamped.child_frame_id = (
-                self._frame_id if self._baselink_frame_id is None else self._baselink_frame_id
-            )
+            # transform_stamped.child_frame_id = (
+            #     self._frame_id if self._baselink_frame_id is None else self._baselink_frame_id
+            # )
+            transform_stamped.child_frame_id = "camera"
             transform_stamped.transform.translation.x = tvec[0]
             transform_stamped.transform.translation.y = tvec[1]
             transform_stamped.transform.translation.z = tvec[2]
@@ -159,16 +182,13 @@ class DatasetVisualizer:
 
             if self._publish_pointcloud:
 
-                rgb_image = cv2.cvtColor(cv2.imread(rgb_path, cv2.IMREAD_ANYCOLOR), cv2.COLOR_BGR2RGB)
-                depth_image = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
-
                 # Create point cloud
                 pointcloud_xyz, valid_pixel_mask = self._camera_model.deproject(
-                    depth_image=depth_image, return_mask=True
+                    depth_image=depth, return_mask=True
                 )
                 pointcloud_xyz = pointcloud_xyz.T
                 N = pointcloud_xyz.shape[0]
-                pointcloud_color = rgb_image[valid_pixel_mask] / 255.0
+                pointcloud_color = rgb[valid_pixel_mask] / 255.0
 
                 data = np.hstack((
                     pointcloud_xyz[:, :3], pointcloud_color
