@@ -1,4 +1,4 @@
-#! /home/pedro/dev/ottobot_ws/venv/bin/python3
+#! /home/ottobot/dev/ottobot_ws/venv/bin/python3
 
 import json
 from pathlib import Path
