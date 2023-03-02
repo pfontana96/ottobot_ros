@@ -2,7 +2,7 @@ import logging
 import time
 from typing import Tuple, Union
 from pathlib import Path
-# import json
+import json
 
 import pyrealsense2 as rs
 import numpy as np
@@ -166,6 +166,52 @@ class RealSenseD435i(BaseRGBDCamera):
         else:
             self._align = rs.align(rs.stream.color)
 
+        attemps = 5
+
+        # NOTE: Loading advanced mode from JSON failing with 'could not set power mode'
+        # # Load config file
+        # if self._rs_config_file is not None:
+
+        #     logger.info("Loading Advanced configurations from file..")
+
+        #     with self._rs_config_file.open("r") as fp:
+        #         rs_viewer_data = json.load(fp)
+
+        #     device_data = rs_viewer_data["parameters"]
+
+        #     advnc_mode = rs.rs400_advanced_mode(self._device)
+
+        #     if not advnc_mode.is_enabled():
+
+        #         raise RealSenseD435i("Advanced mode on device '{}' is disabled".format(
+        #             self._device.get_info(rs.camera_info.name)
+        #         ))
+
+        #     device_configured_on_advnc_mode = False
+        #     ser_dev = rs.serializable_device(self._device)
+        #     for i in range(attemps):
+        #         try:
+        #             ser_dev.load_json(json.dumps(device_data))
+        #             device_configured_on_advnc_mode = True
+
+        #         except Exception as e:
+        #             logger.warning(
+        #                 "[{}/{}] Unexpected exception while loading config '{}', trying again in 1 s..".format(
+        #                 i, attemps, e
+        #             ))
+
+        #             time.sleep(1)
+
+        #         if device_configured_on_advnc_mode:
+        #             break
+
+        #     if not device_configured_on_advnc_mode:
+        #         raise RealSenseD453iError("Unexpected error when loading camera config from '{}': '{}'".format(
+        #             str(self._rs_config_file), e
+        #         ))
+
+        #     logger.info("Configuration file loaded")
+
         # Disable color autoexposure if an exposure time was set
         if self._exposure is not None:
             logger.info("Disabling auto-exposure on color sensor, setting exposure time to {} us".format(
@@ -178,9 +224,13 @@ class RealSenseD435i(BaseRGBDCamera):
 
             logger.info("DONE")
 
+        # Enable IR emitter
+        depth_sensor = self._device.first_depth_sensor()
+        self._try_set_rs_option(depth_sensor, "emitter_enabled", 1)
+        # self._try_set_rs_option(depth_sensor, "laser_power", 150.0)
+
         # Start image streams
         streams_up = False
-        attemps = 5
 
         for i in range(attemps):
             try:
@@ -214,50 +264,6 @@ class RealSenseD435i(BaseRGBDCamera):
 
         logger.info("Images streams are up, waiting 2 seconds to allow camera to warm up")
         time.sleep(2)
-
-        # NOTE: Loading advanced mode from JSON failing with 'could not set power mode'
-        # # Load config file
-        # if self._rs_config_file is not None:
-
-        #     logger.info("Loading Advanced configurations from file..")
-
-        #     with self._rs_config_file.open("r") as fp:
-        #         rs_viewer_data = json.load(fp)
-
-        #     device_data = rs_viewer_data["parameters"]
-
-        #     advnc_mode = rs.rs400_advanced_mode(self._device)
-
-        #     if not advnc_mode.is_enabled():
-
-        #         raise RealSenseD435i("Advanced mode on device '{}' is disabled".format(
-        #             self._device.get_info(rs.camera_info.name)
-        #         ))
-
-        #     device_configured_on_advnc_mode = False
-        #     ser_dev = rs.serializable_device(self._device)
-        #     for i in range(attemps):
-        #         try:
-        #             ser_dev.load_json(json.dumps(device_data).replace("'", '\"'))
-        #             device_configured_on_advnc_mode = True
-
-        #         except Exception as e:
-        #             logger.warning(
-        #                 "[{}/{}] Unexpected exception while loading config '{}', trying again in 1 s..".format(
-        #                 i, attemps, e
-        #             ))
-
-        #             time.sleep(1)
-
-        #         if device_configured_on_advnc_mode:
-        #             break
-
-        #     if not device_configured_on_advnc_mode:
-        #         raise RealSenseD453iError("Unexpected error when loading camera config from '{}': '{}'".format(
-        #             str(self._rs_config_file), e
-        #         ))
-
-        #     logger.info("Configuration file loaded")
 
         logger.info("Finished configuration")
 
