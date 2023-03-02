@@ -10,7 +10,6 @@ from std_msgs.msg import Header
 from geometry_msgs.msg import TransformStamped
 
 import numpy as np
-import numpy.testing as npt
 import cv2
 import tqdm
 
@@ -81,13 +80,14 @@ class DatasetVisualizer:
 
             # se3 = Se3.from_se3(np.array(camera_pose).reshape(6, 1).astype(np.float32))
             se3 = Se3(
-                So3(np.roll(np.array(camera_pose[3:]).reshape(4, 1), 1)
-            ),
+                So3(np.roll(np.array(camera_pose[3:]).reshape(4, 1), 1)),
                 np.array(camera_pose[:3]).reshape(3, 1))
             self._camera_poses[i] = se3
 
             if self._publish_pointcloud:
-                self._rgb_images[i] = cv2.cvtColor(cv2.imread(self._rgb_images[i], cv2.IMREAD_ANYCOLOR), cv2.COLOR_BGR2RGB)
+                self._rgb_images[i] = cv2.cvtColor(
+                    cv2.imread(self._rgb_images[i], cv2.IMREAD_ANYCOLOR), cv2.COLOR_BGR2RGB
+                )
                 self._depth_images[i] = cv2.imread(self._depth_images[i], cv2.IMREAD_UNCHANGED)
 
     def _try_get_transform(self, from_frame_id: str, to_frame_id: str) -> Se3:
