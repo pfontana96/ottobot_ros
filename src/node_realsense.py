@@ -73,7 +73,7 @@ class RealSenseCameraNode:
 
         self._camera = RealSenseD435i(
             context=ctx, fps=self._frame_rate, height=self._height, width=self._width, device=devices[0],
-            align_to="depth", rs_viewer_config=self._rs_config_file, exposure=self._rs_color_exposure,
+            align_to="color", rs_viewer_config=self._rs_config_file, exposure=self._rs_color_exposure,
             depth_filters=self._depth_filters
         )
 
