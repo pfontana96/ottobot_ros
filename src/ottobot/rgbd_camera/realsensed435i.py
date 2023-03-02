@@ -2,7 +2,7 @@ import logging
 import time
 from typing import Tuple, Union
 from pathlib import Path
-import json
+import json  # noqa
 
 import pyrealsense2 as rs
 import numpy as np
