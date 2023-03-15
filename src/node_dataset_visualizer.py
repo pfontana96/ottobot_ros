@@ -67,7 +67,6 @@ class RGBDCameraPinholeModel:
 
         if not filepath.exists():
             raise FileNotFoundError("Could not find configuration file '{}'".format(str(filepath)))
-            
 
         with filepath.open("r") as fp:
             data = yaml.load(fp, yaml.Loader)
@@ -77,12 +76,12 @@ class RGBDCameraPinholeModel:
             depth_scale = data[cls.DEPTH_SCALE_KEYWORD]
 
         except KeyError as e:
-            raise ValueError("Could not find mandatory key '' on RGBDCameraPinholeModel config file at '{}'".format(
+            raise ValueError("Could not find mandatory key '{}' on RGBDCameraPinholeModel config file at '{}'".format(
                 e, str(filepath)
             ))
 
         return cls(camera_matrix, depth_scale)
-    
+
     def deproject(self, depth_image: np.ndarray, return_mask: bool = False):
         """
             Deprojects a depth image into the camera reference frame
@@ -132,7 +131,7 @@ class RGBDCameraPinholeModel:
         return pointcloud
 
 
-def SE3_from_quat_trans(quat: np.ndarray, trans:np.ndarray):
+def SE3_from_quat_trans(quat: np.ndarray, trans: np.ndarray):
     """Loads a Sophus SE3 objetc from a quaternion and a translation vector
 
     Parameters
