@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Union
 
 import rospy
 import tf2_ros
@@ -12,21 +13,144 @@ from geometry_msgs.msg import TransformStamped
 import numpy as np
 import cv2
 import tqdm
-
-from dense_visual_odometry.camera_model import RGBDCameraModel
-from dense_visual_odometry.utils.lie_algebra import Se3, So3
-
-
-def invert(transform: np.ndarray):
-
-    inverse = np.eye(4, dtype=np.float32)
-    inverse[:3, :3] = transform[:3, :3].T
-    inverse[:3, 3] = - transform[:3, :3].T @ transform[:3, 3]
-
-    return inverse
+from scipy.spatial.transform import Rotation
+import sophus as so
+import yaml
 
 
-class DatasetVisualizer:
+class RGBDCameraPinholeModel:
+
+    # Keywords for loading camera model from a config file
+    INTRINSICS_KEYWORD = "intrinsics"
+    DEPTH_SCALE_KEYWORD = "depth_scale"
+
+    def __init__(self, intrinsics: np.ndarray, depth_scale: float):
+        """
+            Creates a RGBDCameraPinholeModel instance
+        Parameters
+        ----------
+        intrinsics : np.ndarray
+            3x3 instrinsics matrix
+                [fx  s cx]
+                [ 0 fy cy]
+                [ 0  0  1]
+            with:
+                fx, fy: Focal lengths for the sensor in X and Y dimensions
+                s: Any possible skew between the sensor axes caused by sensor not being perpendicular from optical axis
+                cx, cy: Image center expressed in pixel coordinates
+        depth_scale : float
+            Scale (multiplication factor) used to convert from the sensor Digital Number to meters
+        """
+        assertion_message = f"Expected a 3x3 'intrinsics', got {intrinsics.shape} instead"
+        assert intrinsics.shape == (3, 3), assertion_message
+        assertion_message = "Expected 'scale' to be a positive floating point, got '{:.3f}' instead".format(depth_scale)
+        assert depth_scale >= 0.0, assertion_message
+
+        # Store calibration matrix as a 3x4 matrix
+        self._intrinsics = np.zeros((3, 4), dtype=np.float32)
+        self._intrinsics[:3, :3] = intrinsics
+        self.depth_scale = depth_scale
+
+    @classmethod
+    def load_from_yaml(cls, filepath: Union[str, Path]):
+        """
+            Loads RGBDCameraModel instance from a YAML file
+        Parameters
+        ----------
+        filepath : Path
+            Path to configuration file
+        Returns
+        -------
+        camera_model : RGBDCameraModel | None
+            Camera model loaded from file if possible, None otherwise
+        """
+
+        if not filepath.exists():
+            raise FileNotFoundError("Could not find configuration file '{}'".format(str(filepath)))
+
+        with filepath.open("r") as fp:
+            data = yaml.load(fp, yaml.Loader)
+
+        try:
+            camera_matrix = np.array(data[cls.INTRINSICS_KEYWORD], dtype=np.float32).reshape(3, 3)
+            depth_scale = data[cls.DEPTH_SCALE_KEYWORD]
+
+        except KeyError as e:
+            raise ValueError("Could not find mandatory key '{}' on RGBDCameraPinholeModel config file at '{}'".format(
+                e, str(filepath)
+            ))
+
+        return cls(camera_matrix, depth_scale)
+
+    def deproject(self, depth_image: np.ndarray, return_mask: bool = False):
+        """
+            Deprojects a depth image into the camera reference frame
+        Parameters
+        ----------
+        depth_image : np.ndarray
+            Depth image (with invalid pixels defined with the value 0)
+        return_mask : bool
+            if True, then a bolean mask is returned with valid pixels
+        Returns
+        -------
+        pointcloud : np.ndarray
+            3D Point (4xN) coordinates of projected points in Homogeneous coordinates (i.e x, y, z, 1)
+        mask : np.ndarray, optional
+            Boolean mask with the same shape as `depth_image` with True on valid pixels and false on non valid.
+        """
+        height, width = depth_image.shape
+
+        # Remove invalid points
+        mask = depth_image != 0.0
+        mask = mask.reshape(-1)
+
+        z = depth_image.reshape(-1) * self.depth_scale
+        z = z[mask].astype(np.float32)
+
+        # Compute sensor grid
+        # TODO: Use a more efficient way of creating pointcloud -> Several pixels values are repeated. See `sparse`
+        # parameter of `np.meshgrid`
+        x_pixel, y_pixel = np.meshgrid(
+            np.arange(width, dtype=np.float32), np.arange(height, dtype=np.float32), copy=False
+        )
+        x_pixel = x_pixel.reshape(-1)
+        y_pixel = y_pixel.reshape(-1)
+
+        x_pixel = x_pixel[mask]
+        y_pixel = y_pixel[mask]
+
+        # Map from pixel position to 3d coordinates using camera matrix (inverted)
+        # Get x, y points w.r.t camera reference frame (still not multiply by the depth)
+        points = np.dot(np.linalg.inv(self._intrinsics[:3, :3]), np.vstack((x_pixel, y_pixel, np.ones_like(z))))
+
+        pointcloud = np.vstack((points[0, :] * z, points[1, :] * z, z, np.ones_like(z)))
+
+        if return_mask:
+            return (pointcloud, mask.reshape(depth_image.shape))
+
+        return pointcloud
+
+
+def SE3_from_quat_trans(quat: np.ndarray, trans: np.ndarray):
+    """Loads a Sophus SE3 objetc from a quaternion and a translation vector
+
+    Parameters
+    ----------
+    quat : np.ndarray
+        Quaternion
+    trans : np.ndarray
+        Translation
+
+    Returns
+    -------
+    SE3 : SE3
+        SE3 group 4x4 matrix
+    """
+    rotmat = Rotation.from_quat(quat).as_matrix()
+    return so.SE3(rotmat, trans.reshape(3, 1))
+
+
+class DatasetVisualizerNode:
     def __init__(self):
 
         rospy.init_node("dataset_visualizer")
@@ -74,15 +198,11 @@ class DatasetVisualizer:
             self._depth_images = data["depth"]
             camera_intrinsics_file = Path(data["camera_intrinsics"])
 
-        self._camera_model = RGBDCameraModel.load_from_yaml(camera_intrinsics_file)
+        self._camera_model = RGBDCameraPinholeModel.load_from_yaml(camera_intrinsics_file)
         self._camera_poses = [None] * len(camera_poses_list)
         for i, camera_pose in tqdm.tqdm(enumerate(camera_poses_list), desc="Loading poses"):
 
-            # se3 = Se3.from_se3(np.array(camera_pose).reshape(6, 1).astype(np.float32))
-            se3 = Se3(
-                So3(np.roll(np.array(camera_pose[3:]).reshape(4, 1), 1)),
-                np.array(camera_pose[:3]).reshape(3, 1))
-            self._camera_poses[i] = se3
+            self._camera_poses[i] = SE3_from_quat_trans(np.array(camera_pose[3:]), np.array(camera_pose[:3]))
 
             if self._publish_pointcloud:
                 self._rgb_images[i] = cv2.cvtColor(
@@ -90,7 +210,7 @@ class DatasetVisualizer:
                 )
                 self._depth_images[i] = cv2.imread(self._depth_images[i], cv2.IMREAD_UNCHANGED)
 
-    def _try_get_transform(self, from_frame_id: str, to_frame_id: str) -> Se3:
+    def _try_get_transform(self, from_frame_id: str, to_frame_id: str) -> so.SE3:
         """Tries to get transform from `from_frame_id` to `to_frame_id`
 
         Parameters
@@ -120,18 +240,18 @@ class DatasetVisualizer:
             tf_quat = tf2_transform.transform.rotation
             tf_tvec = tf2_transform.transform.translation
 
-            transform = Se3(
-                So3(np.array([tf_quat.w, tf_quat.x, tf_quat.y, tf_quat.z], dtype=np.float32).reshape(4, 1)),
+            transform = SE3_from_quat_trans(
+                np.array([tf_quat.x, tf_quat.y, tf_quat.z, tf_quat.w], dtype=np.float32),
                 np.array([tf_tvec.x, tf_tvec.y, tf_tvec.z], dtype=np.float32).reshape(3, 1)
             )
 
-            rospy.loginfo("\n{}".format(transform.exp()))
+            # rospy.loginfo("\n{}".format(transform.exp()))
 
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
             rospy.logwarn("Lookup for transform from '{}' to '{}' failed with '{}' within {}s. Using Identity..".format(
                 self._frame_id, self._baselink_frame_id, e, timeout
             ))
-            transform = Se3.identity()
+            transform = so.SE3()
 
         return transform
 
@@ -141,7 +261,7 @@ class DatasetVisualizer:
 
         baselink_to_camera = self._try_get_transform(self._baselink_frame_id, self._frame_id)
 
-        accumulated_transform = Se3.identity()
+        accumulated_transform = so.SE3()
 
         for i, (estimated_transform, rgb, depth) in enumerate(
             zip(self._camera_poses, self._rgb_images, self._depth_images)
@@ -160,23 +280,20 @@ class DatasetVisualizer:
 
             robot_pose = baselink_to_camera * accumulated_transform
 
-            quat = robot_pose.so3.quat.flatten().tolist()
-            tvec = robot_pose.tvec.flatten().tolist()
+            quat = Rotation.from_matrix(robot_pose.so3().matrix()).as_quat().flatten().tolist()
+            tvec = robot_pose.translation().flatten().tolist()
 
             transform_stamped = TransformStamped()
             transform_stamped.header.stamp = stamp
             transform_stamped.header.frame_id = self._map_frame_id
-            # transform_stamped.child_frame_id = (
-            #     self._frame_id if self._baselink_frame_id is None else self._baselink_frame_id
-            # )
             transform_stamped.child_frame_id = "camera"
             transform_stamped.transform.translation.x = tvec[0]
             transform_stamped.transform.translation.y = tvec[1]
             transform_stamped.transform.translation.z = tvec[2]
-            transform_stamped.transform.rotation.w = quat[0]
-            transform_stamped.transform.rotation.x = quat[1]
-            transform_stamped.transform.rotation.y = quat[2]
-            transform_stamped.transform.rotation.z = quat[3]
+            transform_stamped.transform.rotation.w = quat[3]
+            transform_stamped.transform.rotation.x = quat[0]
+            transform_stamped.transform.rotation.y = quat[1]
+            transform_stamped.transform.rotation.z = quat[2]
 
             self._tf_broadcaster.sendTransform(transform_stamped)
 
@@ -227,5 +344,5 @@ class DatasetVisualizer:
 
 if __name__ == '__main__':
 
-    camera_pose_publisher = DatasetVisualizer()
+    camera_pose_publisher = DatasetVisualizerNode()
     camera_pose_publisher.run()
