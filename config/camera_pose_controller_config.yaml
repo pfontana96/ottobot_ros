@@ -1,0 +1,5 @@
+camera_frame_id: camera
+robot_base_frame_id: base_link
+color_topic: /ottobot/datarepr/raw/color_image
+depth_topic: /ottobot/datarepr/raw/depth_image
+camera_intrinsics_file: /home/ottobot/dev/ottobot_ws/src/ottobot_ros/extern/visual-odometry/examples/intrinsics.yaml

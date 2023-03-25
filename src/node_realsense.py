@@ -86,6 +86,7 @@ class RealSenseCameraNode:
 
             # Get camera intrinsics and dump them in configuration file
             intrinsics = self._camera.intrinsics
+            intrinsics.update({"height": self._height, "width": self._width})
             config_path = Path(__file__).resolve().parent.parent / "config"
 
             if config_path.exists() and config_path.is_dir():

@@ -1,0 +1,6 @@
+<launch>
+    <node pkg="tf2_ros" type="static_transform_publisher" name="baselink_to_camera" ns="ottobot" args="0.0 0.0 0.2 -0.5 0.5 -0.5 0.5 base_link camera"/>
+    <node pkg="ottobot_ros" type="node_camera_pose_controller" name="cam_pose_ctrl" ns="ottobot" output="screen">
+        <rosparam file="$(find ottobot_ros)/config/camera_pose_controller_config.yaml"/>
+    </node>
+</launch>
